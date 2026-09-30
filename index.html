@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INFINITY FUTURE - Official Title Sequence</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000000;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            cursor: none;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Overlay for film grain effect */
+        .film-grain {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.15;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+            background-size: 200px 200px;
+            animation: grainShift 0.5s steps(3) infinite;
+        }
+
+        @keyframes grainShift {
+            0%,
+            100% {
+                background-position: 0 0;
+            }
+            33% {
+                background-position: 50px 30px;
+            }
+            66% {
+                background-position: 20px 60px;
+            }
+        }
+
+        /* Letterbox bars */
+        .letterbox-top,
+        .letterbox-bottom {
+            position: fixed;
+            left: 0;
+            width: 100%;
+            height: 8vh;
+            background: #000000;
+            z-index: 11;
+            pointer-events: none;
+        }
+        .letterbox-top {
+            top: 0;
+        }
+        .letterbox-bottom {
+            bottom: 0;
+        }
+
+        /* Anamorphic flare */
+        .anamorphic-flare {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9;
+            pointer-events: none;
+            background: radial-gradient(ellipse at 50% 50%,
+                    transparent 60%,
+                    rgba(0, 0, 0, 0.4) 80%,
+                    rgba(0, 0, 0, 0.9) 100%);
+            animation: flareBreathe 4s ease-in-out infinite;
+        }
+
+        @keyframes flareBreathe {
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        /* Loading */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            color: #cccccc;
+            font-size: 0.9rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            transition: opacity 1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="film-grain"></div>
+    <div class="letterbox-top"></div>
+    <div class="letterbox-bottom"></div>
+    <div class="anamorphic-flare"></div>
+    <div class="loading" id="loading">Loading...</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+        import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
+
+        // ─────────────────────────────────────
+        // SCENE SETUP
+        // ─────────────────────────────────────
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020205);
+        scene.fog = new THREE.FogExp2(0x020205, 0.00015);
+
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0.3, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.4;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.body.appendChild(renderer.domElement);
+
+        // ─────────────────────────────────────
+        // POST PROCESSING
+        // ─────────────────────────────────────
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // Bloom for metallic glow
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.5, // strength
+            0.4, // radius
+            0.85 // threshold
+        );
+        composer.addPass(bloomPass);
+
+        // Subtle RGB shift for chromatic aberration
+        const rgbShiftPass = new ShaderPass(RGBShiftShader);
+        rgbShiftPass.uniforms['amount'].value = 0.0015;
+        composer.addPass(rgbShiftPass);
+
+        // Film look
+        const filmPass = new FilmPass(0.25, 0.5, 2048, false);
+        filmPass.renderToScreen = true;
+        composer.addPass(filmPass);
+
+        // ─────────────────────────────────────
+        // LIGHTING - Professional 3-point + ambient
+        // ─────────────────────────────────────
+        // Ambient
+        const ambientLight = new THREE.AmbientLight(0x1a1a2e, 0.8);
+        scene.add(ambientLight);
+
+        // Key light - warm white from top-right
+        const keyLight = new THREE.DirectionalLight(0xffffff, 8);
+        keyLight.position.set(5, 4, 6);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 2048;
+        keyLight.shadow.mapSize.height = 2048;
+        keyLight.shadow.camera.near = 0.5;
+        keyLight.shadow.camera.far = 50;
+        keyLight.shadow.camera.left = -10;
+        keyLight.shadow.camera.right = 10;
+        keyLight.shadow.camera.top = 5;
+        keyLight.shadow.camera.bottom = -5;
+        keyLight.shadow.bias = -0.0001;
+        keyLight.shadow.normalBias = 0.02;
+        scene.add(keyLight);
+
+        // Fill light - cool blue from left
+        const fillLight = new THREE.DirectionalLight(0x8899cc, 3);
+        fillLight.position.set(-3, 0, 2);
+        scene.add(fillLight);
+
+        // Rim/back light - separates from background
+        const rimLight = new THREE.DirectionalLight(0xffffff, 5);
+        rimLight.position.set(0, -1, -4);
+        scene.add(rimLight);
+
+        // Top accent light
+        const topLight = new THREE.PointLight(0xccccff, 30, 15);
+        topLight.position.set(0, 3, 2);
+        scene.add(topLight);
+
+        // Bottom bounce light
+        const bounceLight = new THREE.PointLight(0x334466, 15, 10);
+        bounceLight.position.set(0, -2, 3);
+        scene.add(bounceLight);
+
+        // ─────────────────────────────────────
+        // ENVIRONMENT / REFLECTION MAP
+        // ─────────────────────────────────────
+        const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256);
+        const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarget);
+        scene.environment = cubeRenderTarget.texture;
+
+        // Create a simple environment for reflections
+        const envScene = new THREE.Scene();
+        envScene.background = new THREE.Color(0x111122);
+        const envGeo = new THREE.SphereGeometry(50, 32, 32);
+        const envMat = new THREE.MeshBasicMaterial({
+            color: 0x111122,
+            side: THREE.BackSide
+        });
+        const envSphere = new THREE.Mesh(envGeo, envMat);
+        envScene.add(envSphere);
+
+        // Add some light points to the environment
+        for (let i = 0; i < 20; i++) {
+            const lightGeo = new THREE.SphereGeometry(0.5, 8, 8);
+            const lightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(Math.random() * 0.2 + 0.55, 0.3,
+                    Math.random() * 0.3 + 0.7) });
+            const lightPoint = new THREE.Mesh(lightGeo, lightMat);
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI;
+            lightPoint.position.set(
+                Math.sin(phi) * Math.cos(theta) * 45,
+                Math.sin(phi) * Math.sin(theta) * 45,
+                Math.cos(phi) * 45
+            );
+            envScene.add(lightPoint);
+        }
+
+        // ─────────────────────────────────────
+        // PARTICLE SYSTEM - Floating dust/sparks
+        // ─────────────────────────────────────
+        const particlesGroup = new THREE.Group();
+        scene.add(particlesGroup);
+
+        const particleCount = 500;
+        const particlesGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+        const colors = new Float32Array(particleCount * 3);
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 20;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 12;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 15;
+            sizes[i] = Math.random() * 0.04 + 0.01;
+            colors[i * 3] = 0.7 + Math.random() * 0.3;
+            colors[i * 3 + 1] = 0.7 + Math.random() * 0.3;
+            colors[i * 3 + 2] = 0.8 + Math.random() * 0.2;
+        }
+
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particlesGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        particlesGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particlesMat = new THREE.PointsMaterial({
+            size: 0.03,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.7,
+        });
+
+        const particles = new THREE.Points(particlesGeo, particlesMat);
+        particlesGroup.add(particles);
+
+        // ─────────────────────────────────────
+        // GROUND / FLOOR REFLECTION PLANE
+        // ─────────────────────────────────────
+        const floorGeo = new THREE.PlaneGeometry(30, 30);
+        const floorMat = new THREE.MeshStandardMaterial({
+            color: 0x0a0a15,
+            roughness: 0.3,
+            metalness: 0.9,
+            transparent: true,
+            opacity: 0.6,
+        });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -3;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // ─────────────────────────────────────
+        // 3D TEXT - "INFINITY FUTURE"
+        // ─────────────────────────────────────
+        let mainTitleGroup;
+        let creditGroup;
+        let subtitleGroup;
+
+        const fontLoader = new FontLoader();
+        const fontUrl = 'https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json';
+
+        fontLoader.load(fontUrl, (font) => {
+            document.getElementById('loading').style.opacity = '0';
+            setTimeout(() => document.getElementById('loading').remove(), 1000);
+
+            // ── MAIN TITLE ─────────────────
+            const titleGeo = new TextGeometry('INFINITY FUTURE', {
+                font: font,
+                size: 1.2,
+                height: 0.35, // depth/extrusion
+                curveSegments: 20,
+                bevelEnabled: true,
+                bevelThickness: 0.06,
+                bevelSize: 0.04,
+                bevelOffset: 0,
+                bevelSegments: 15,
+            });
+            titleGeo.center();
+
+            // Premium metallic material with clearcoat
+            const titleMat = new THREE.MeshPhysicalMaterial({
+                color: new THREE.Color('#d4d4d4'),
+                metalness: 1.0,
+                roughness: 0.2,
+                clearcoat: 0.4,
+                clearcoatRoughness: 0.15,
+                reflectivity: 1.2,
+                specularIntensity: 1.5,
+                specularColor: new THREE.Color('#ffffff'),
+                sheen: 0.3,
+                sheenRoughness: 0.2,
+                sheenColor: new THREE.Color('#ffffff'),
+                envMapIntensity: 1.5,
+            });
+
+            const titleMesh = new THREE.Mesh(titleGeo, titleMat);
+            titleMesh.castShadow = true;
+            titleMesh.receiveShadow = true;
+            titleMesh.position.y = 0.3;
+
+            mainTitleGroup = new THREE.Group();
+            mainTitleGroup.add(titleMesh);
+
+            // Edge highlight wireframe for tech feel
+            const edgeGeo = new THREE.EdgesGeometry(titleGeo, 15);
+            const edgeMat = new THREE.MeshBasicMaterial({
+                color: 0x8899cc,
+                transparent: true,
+                opacity: 0.15,
+            });
+            const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
+            mainTitleGroup.add(edgeMesh);
+
+            scene.add(mainTitleGroup);
+
+            // ── SUBTITLE ─────────────────
+            const subtitleGeo = new TextGeometry('BEYOND THE HORIZON', {
+                font: font,
+                size: 0.25,
+                height: 0.06,
+                curveSegments: 12,
+                bevelEnabled: true,
+                bevelThickness: 0.02,
+                bevelSize: 0.01,
+                bevelSegments: 8,
+            });
+            subtitleGeo.center();
+
+            const subtitleMat = new THREE.MeshPhysicalMaterial({
+                color: new THREE.Color('#8899bb'),
+                metalness: 0.9,
+                roughness: 0.35,
+                clearcoat: 0.2,
+                clearcoatRoughness: 0.3,
+                reflectivity: 0.9,
+                envMapIntensity: 1.0,
+            });
+
+            const subtitleMesh = new THREE.Mesh(subtitleGeo, subtitleMat);
+            subtitleMesh.position.y = -1.0;
+            subtitleMesh.castShadow = true;
+
+            subtitleGroup = new THREE.Group();
+            subtitleGroup.add(subtitleMesh);
+            subtitleGroup.visible = true;
+            scene.add(subtitleGroup);
+
+            // ── CREDIT LINE ─────────────────
+            const creditGeo = new TextGeometry('A FILM ENGINEERED BY IRFAN', {
+                font: font,
+                size: 0.22,
+                height: 0.05,
+                curveSegments: 12,
+                bevelEnabled: true,
+                bevelThickness: 0.015,
+                bevelSize: 0.008,
+                bevelSegments: 8,
+            });
+            creditGeo.center();
+
+            const creditMat = new THREE.MeshPhysicalMaterial({
+                color: new THREE.Color('#c0c0d0'),
+                metalness: 0.85,
+                roughness: 0.4,
+                clearcoat: 0.3,
+                clearcoatRoughness: 0.25,
+                reflectivity: 0.8,
+                envMapIntensity: 1.2,
+                transparent: true,
+                opacity: 0,
+            });
+
+            const creditMesh = new THREE.Mesh(creditGeo, creditMat);
+            creditMesh.position.y = -2.2;
+            creditMesh.castShadow = true;
+
+            creditGroup = new THREE.Group();
+            creditGroup.add(creditMesh);
+            scene.add(creditGroup);
+
+            // ── DECORATIVE LINE UNDER TITLE ──
+            const lineGeo = new THREE.BoxGeometry(3.5, 0.015, 0.015);
+            const lineMat = new THREE.MeshStandardMaterial({
+                color: 0x8899cc,
+                metalness: 0.9,
+                roughness: 0.3,
+                emissive: 0x334466,
+                emissiveIntensity: 0.5,
+            });
+            const line = new THREE.Mesh(lineGeo, lineMat);
+            line.position.y = -0.65;
+            scene.add(line);
+
+            // ── TECH RINGS ─────────────────
+            const ringGeo = new THREE.TorusGeometry(2.5, 0.015, 16, 200);
+            const ringMat = new THREE.MeshStandardMaterial({
+                color: 0x667799,
+                metalness: 0.95,
+                roughness: 0.25,
+                emissive: 0x111133,
+                emissiveIntensity: 0.4,
+                transparent: true,
+                opacity: 0.5,
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2.2;
+            ring.position.y = 0.3;
+            ring.name = 'techRing';
+            scene.add(ring);
+
+            const ring2Geo = new THREE.TorusGeometry(3.2, 0.01, 16, 250);
+            const ring2 = new THREE.Mesh(ring2Geo, ringMat.clone());
+            ring2.rotation.x = Math.PI / 1.8;
+            ring2.rotation.y = Math.PI / 4;
+            ring2.position.y = 0.3;
+            ring2.material.opacity = 0.3;
+            ring2.name = 'techRing2';
+            scene.add(ring2);
+        });
+
+        // ─────────────────────────────────────
+        // VOLUMETRIC LIGHT BEAMS (simulated)
+        // ─────────────────────────────────────
+        const beamGroup = new THREE.Group();
+        scene.add(beamGroup);
+
+        for (let i = 0; i < 6; i++) {
+            const beamGeo = new THREE.CylinderGeometry(0.02, 0.08, 8 + Math.random() * 4, 8, 1, true);
+            const beamMat = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(0.6 + Math.random() * 0.15, 0.3, 0.7 + Math.random() * 0.3),
+                transparent: true,
+                opacity: 0.06,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+            const beam = new THREE.Mesh(beamGeo, beamMat);
+            beam.position.set(
+                (Math.random() - 0.5) * 8,
+                2 + Math.random() * 4,
+                -3 - Math.random() * 3
+            );
+            beam.rotation.z = (Math.random() - 0.5) * 0.6;
+            beam.rotation.x = (Math.random() - 0.5) * 0.4;
+            beamGroup.add(beam);
+        }
+
+        // ─────────────────────────────────────
+        // ANIMATION STATE
+        // ─────────────────────────────────────
+        const clock = new THREE.Clock();
+        let time = 0;
+        const creditAppearTime = 5.0; // seconds
+        let creditVisible = false;
+        let creditOpacity = 0;
+
+        // ─────────────────────────────────────
+        // RENDER LOOP
+        // ─────────────────────────────────────
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min(clock.getDelta(), 0.1);
+            time += dt;
+
+            // ── CAMERA ZOOM (dolly in/out) ──
+            const zoomCycle = time * 0.4;
+            const baseZ = 8;
+            const zoomAmplitude = 1.8;
+            const zoomOffset = Math.sin(zoomCycle) * zoomAmplitude;
+            const targetZ = baseZ + zoomOffset;
+
+            // Smooth camera interpolation
+            camera.position.z += (targetZ - camera.position.z) * 0.03;
+
+            // Subtle camera sway
+            const swayX = Math.sin(time * 0.25) * 0.3;
+            const swayY = Math.cos(time * 0.3) * 0.2;
+            camera.position.x += (swayX - camera.position.x) * 0.02;
+            camera.position.y += (0.3 + swayY - camera.position.y) * 0.02;
+            camera.lookAt(0, 0.1, 0);
+
+            // ── ROTATE RINGS ──
+            const ring1 = scene.getObjectByName('techRing');
+            const ring2 = scene.getObjectByName('techRing2');
+            if (ring1) {
+                ring1.rotation.z += dt * 0.3;
+                ring1.rotation.y += dt * 0.15;
+            }
+            if (ring2) {
+                ring2.rotation.z -= dt * 0.25;
+                ring2.rotation.x += dt * 0.2;
+            }
+
+            // ── PARTICLE ANIMATION ──
+            particles.rotation.y += dt * 0.05;
+            particles.rotation.x += dt * 0.03;
+            const posArray = particles.geometry.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                posArray[i * 3 + 1] += Math.sin(time * 2 + i * 0.1) * 0.003;
+                if (posArray[i * 3 + 1] > 6) posArray[i * 3 + 1] = -6;
+                if (posArray[i * 3 + 1] < -6) posArray[i * 3 + 1] = 6;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            // ── CREDIT APPEARANCE AFTER 5 SECONDS ──
+            if (creditGroup && time >= creditAppearTime) {
+                if (!creditVisible) {
+                    creditVisible = true;
+                }
+                creditOpacity += dt * 1.5;
+                creditOpacity = Math.min(creditOpacity, 1);
+                creditGroup.children.forEach(child => {
+                    if (child.material && child.material.opacity !== undefined) {
+                        child.material.opacity = creditOpacity;
+                    }
+                });
+                // Fade out after 10 seconds
+                if (time > creditAppearTime + 7) {
+                    creditOpacity -= dt * 1.5;
+                    creditOpacity = Math.max(creditOpacity, 0);
+                    creditGroup.children.forEach(child => {
+                        if (child.material && child.material.opacity !== undefined) {
+                            child.material.opacity = creditOpacity;
+                        }
+                    });
+                }
+            }
+
+            // ── MAIN TITLE SUBTLE FLOAT ──
+            if (mainTitleGroup) {
+                mainTitleGroup.position.y = Math.sin(time * 0.6) * 0.15;
+                // Subtle rotation
+                mainTitleGroup.rotation.y = Math.sin(time * 0.3) * 0.04;
+                mainTitleGroup.rotation.x = Math.cos(time * 0.35) * 0.03;
+            }
+
+            if (subtitleGroup) {
+                subtitleGroup.position.y = -1.0 + Math.sin(time * 0.5 + 0.5) * 0.08;
+            }
+
+            // ── VOLUMETRIC BEAMS ──
+            beamGroup.children.forEach((beam, i) => {
+                beam.material.opacity = 0.04 + Math.sin(time * 1.5 + i) * 0.03;
+                beam.rotation.z += dt * 0.1;
+            });
+
+            // ── RGB SHIFT INTENSITY VARIES ──
+            rgbShiftPass.uniforms['amount'].value = 0.001 + Math.sin(time * 0.7) * 0.0008;
+
+            // ── BLOOM PULSES ──
+            bloomPass.strength = 0.4 + Math.sin(time * 0.5) * 0.15;
+
+            // ── RENDER ──
+            composer.render();
+        }
+
+        // ─────────────────────────────────────
+        // START
+        // ─────────────────────────────────────
+        animate();
+
+        // ─────────────────────────────────────
+        // RESIZE HANDLER
+        // ─────────────────────────────────────
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        console.log('%c🎬 INFINITY FUTURE %c|%c Title Sequence Active',
+            'color: #d4d4d4; font-size: 20px; font-weight: bold;',
+            'color: #8899cc;',
+            'color: #aaa;');
+        console.log('%c   ↳ Real 3D Metallic Text with Physical Material',
+            'color: #999;');
+        console.log('%c   ↳ Camera Dolly Zoom Animation',
+            'color: #999;');
+        console.log('%c   ↳ Credit: "A FILM ENGINEERED BY IRFAN" at 5s',
+            'color: #c0c0d0;');
+        console.log('%c   ↳ PostFX: Bloom + Chromatic Aberration + Film Grain',
+            'color: #999;');
+        console.log('%c   ↳ 500 Particles + Volumetric Beams + Tech Rings',
+            'color: #999;');
+    </script>
+</body>
+</html>
